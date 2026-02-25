@@ -36,21 +36,47 @@ dloss <- function(input){
     2 * input
 }
 
-values <- matrix(nrow = n, ncol = m)
 
-run_net <- function(input){
-    values[, 1] <- in_weights %*% input + biases[, 1]
+model <- list(dim = c(n = n, m = m, i = i, o = o), 
+    weights = list(hidden = nn_weights, input = in_weights, out = out_weights),
+    biases = list(hidden = biases, out = out_biases),
+    act = list(hidden = act, out = act),
+    dact = list(hidden = dact, out = dact)
+)#makes it easier to move around
+
+run_net <- function(input, model){
+    n <- model$dim[["n"]]
+    m <- model$dim[["m"]]
+    o <- model$dim[["o"]]
+    values <- matrix(nrow = n, ncol = m)
+    values[, 1] <- model$weights$input %*% input + model$biases$hidden[, 1]
     for (i in 2:m){
-        values[, i] <- nn_weights[i - 1, , ] %*%
-        act(values[, i - 1]) + biases[, i]
+        values[, i] <- model$weights$hidden[i - 1, , ] %*%
+        model$act$hidden(values[, i - 1]) + model$biases$hidden[, i]
     }
-    out <- out_weights %*% act(values[, m]) + out_biases#could make this sigmoid function
-    return (out)
+    dim(model$act$hidden(values[,m]))
+
+    w_out <- matrix(as.numeric(model$weights$out), nrow = o, ncol = n)
+    h_m   <- matrix(as.numeric(model$act$hidden(values[, m])), nrow = n, ncol = 1)
+    b_out <- matrix(as.numeric(model$biases$out), nrow = o, ncol = 1)
+
+    out <- w_out %*% h_m + b_out
+    # out <- model$weights$out %*% matrix(model$act$hidden(values[, m]), ncol = 1) + model$biases$out
+    list(input = input, output = out, model = model, values = values)
 }
 
 input <- c(3)
-output <- run_net(input)
-correct_output <- c(1)
+output <- run_net(input, model)
+correct_output <- matrix(1, 1, 1)
+
+backprop_args <- list(
+    output = output$output,
+    correct_output = correct_output,
+    values = output$values,
+    model = model,
+    dloss = dloss,
+    input = input
+)
 
 #dC/dw_ij = dC/dV_j*dV_j/dw_ij = dC/dV_j*act(V_i), where act is the
 #activation function and V is the value of node i(pre activation)
@@ -72,10 +98,26 @@ correct_output <- c(1)
 #dW_in = outer(dV[, 1], input)
 
 #could run in parallel with run_net if written for just in time
-run_backprop <- function(){
+
+run_backprop <- function(args){
+    output <- args$output
+    correct_output <- args$correct_output
+    values <- args$values
+    model <- args$model
+    dloss <- args$dloss
+    input <- args$input
+    
+    out_weights <- model$weights$out
+    nn_weights <- model$weights$hidden
+    act <- model$act$hidden
+    dact <- model$dact$hidden
+    n <- model$dim["n"]
+    m <- model$dim["m"]
+    
     dOut <- dloss(output - correct_output) # there is no dAct in the network
     dW_out <- outer(dOut, act(values[, m]))
-    dV <- matrix(0, nrow = n, ncol = m)
+    dW_out <- matrix(dW_out, nrow = model$dim["o"], ncol = model$dim["n"])
+    dV <- matrix(0, nrow = n, ncol = m) #acts as dBias
     dV[, m] <- as.vector(t(out_weights) %*% dOut) * dact(values[, m])
 
     dW <- array(dim = c(m - 1, n, n))
@@ -84,4 +126,30 @@ run_backprop <- function(){
         dW[i, , ] <- outer(dV[, i + 1], act(values[, i]))
     }
     dW_in <- outer(dV[, 1], input)
+    list(dHidden = dW, dBOut = dOut, dBias = dV, dIn = dW_in, dOut = dW_out)
 }
+run_backprop(backprop_args)
+
+#verify backprop:
+#too lazy to do this for the whole thing, u get the idea
+verify_backprop <- function(args){
+    backprop_vals <- run_backprop(args)
+    input <- args$input
+    model <- args$model
+    e <- 1e-5
+    err <- c()
+    for (i in seq_along(model$biases$out)){
+        cp <- model
+        cp$biases$out[[i]] <- model$biases$out[[i]] + e
+        c1 <- loss(run_net(input, cp)$out - args$correct_output)
+
+        cp$biases$out[[i]] <- model$biases$out[[i]] - e
+        c2 <- loss(run_net(input, cp)$out - args$correct_output)
+
+        num_grad <- (c1 - c2) / (2*e)
+        er <- backprop_vals$dBOut - num_grad
+        err <- c(err, er)
+    }
+    err
+}
+verify_backprop(backprop_args)
