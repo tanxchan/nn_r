@@ -311,7 +311,7 @@ grad_desc <- function(
     f_grad$biases$out <- array(f_grad$biases$out, dim = dim(trainer$biases$out))
     #descend with gradients
     if (learning_function == "Adaptive") {
-      lr_scale <- lr_scale * sqrt(1 - b2^time) / (1 - b1^time)
+      #   lr_scale <- lr_scale * sqrt(1 - b2^time) / (1 - b1^time)
     }
     for (i in names(step_size$weights)) {
       #allows for custom behaviour if step_size should be different between biases and weights
@@ -359,6 +359,15 @@ grad_desc <- function(
   }
   costs
 }
-cat(grad_desc(model, c(1, 2), matrix(c(3, 2, 19000, 1), 2, 2)))
-cat(grad_desc(model, c(1), matrix(1, 2, 1), times = 10))
-cat(grad_desc(model, c(1, 2, 3, 4, 5), matrix(1, 2, 5), times = 10))
+# cat(grad_desc(model, c(1, 2), matrix(c(3, 2, 19000, 1), 2, 2)))
+# cat(grad_desc(model, c(1), matrix(1, 2, 1), times = 10))
+# cat(grad_desc(model, c(1, 2, 3, 4, 5), matrix(1, 2, 5), times = 10))
+
+pred_function <- function(x) {
+  return(x^2)
+}
+xs <- seq(0, 1, 0.01)
+ys <- pred_function(xs)
+zs <- pred_function(ys)
+# costs <- grad_desc(model, rep(1, 100), matrix(0, o, 100), times = 100)
+costs <- grad_desc(model, xs, rbind(ys, zs), times = 100)
