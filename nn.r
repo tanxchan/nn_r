@@ -7,7 +7,7 @@
 #Constants
 n <- 3 #number of nodes in each column
 m <- 3 #number of cols
-i <- 1 #number of inputs
+i <- 2 #number of inputs
 o <- 2 #number of outputs
 
 # nn_weights should be a random sample
@@ -132,7 +132,7 @@ run_backprop <- function(args) {
       dact(values[, i])
     dW[i, , ] <- outer(dV[, i + 1], act(values[, i]))
   }
-  dW_in <- outer(dV[, 1], input)
+  dW_in <- outer(dV[, 1], as.vector(input))
   list(
     dWeightHidden = dW,
     dBiasOut = dOut,
@@ -172,7 +172,13 @@ verify_backprop(backprop_args)
 #thus allowing custom model architecture
 get_grads <- function(model, inputs, outputs) {
   o <- model$dim[["o"]]
-  N <- length(inputs)
+
+  # ---- normalize inputs to (i x N) ----
+  if (is.null(dim(inputs))) {
+    # inputs is a vector
+    inputs <- matrix(inputs, nrow = length(inputs), ncol = 1)
+  }
+  N <- ncol(inputs)
 
   # ---- normalize outputs to (o x N) ----
   if (is.null(dim(outputs))) {
@@ -204,9 +210,10 @@ get_grads <- function(model, inputs, outputs) {
   init <- FALSE
   grads <- NA
   losses <- c()
-  for (i in seq_along(inputs)) {
+  for (i in seq_len(N)) {
     # print(outputs)
-    output <- run_net(inputs[i], model)
+    input_i <- matrix(inputs[, i], ncol = 1)
+    output <- run_net(input_i, model)
     y <- matrix(outputs[, i], nrow = model$dim[["o"]], ncol = 1)
     backprop_args <- list(
       output = output$output,
@@ -214,7 +221,7 @@ get_grads <- function(model, inputs, outputs) {
       values = output$values,
       model = model,
       dloss = dloss,
-      input = inputs[i]
+      input = input_i
     )
     losses <- c(losses, loss(y - output$output))
     run_grads <- run_backprop(backprop_args)
@@ -222,11 +229,11 @@ get_grads <- function(model, inputs, outputs) {
       init <- TRUE
       grads <- run_grads
       for (j in seq_along(grads)) {
-        grads[[j]] <- grads[[j]] / length(inputs)
+        grads[[j]] <- grads[[j]] / N
       }
     } else {
       for (j in seq_along(run_grads)) {
-        grads[[j]] <- grads[[j]] + run_grads[[j]] / length(inputs)
+        grads[[j]] <- grads[[j]] + run_grads[[j]] / N
       }
     }
   }
@@ -245,6 +252,12 @@ grad_desc <- function(
   proportion = 0.5, #the proportion to use if method is proportion
   batch_size = 1 #alternative to proportion
 ) {
+  if (is.null(dim(inputs))) {
+    # inputs is a vector
+    inputs <- matrix(inputs, nrow = length(inputs), ncol = 1)
+  }
+  N <- ncol(inputs)
+
   costs <- c()
   #R is copy on modify, so we can just make a copy
   trainer <- model
@@ -276,8 +289,15 @@ grad_desc <- function(
   first_moments <- NA
   second_moments <- NA
   if (optimizer == "ADAM") {
-    first_moments <- step_size
-    second_moments <- step_size
+    # Create deep copies for ADAM
+    first_moments <- list(
+      weights = lapply(step_size$weights, function(x) array(0, dim = dim(x))),
+      biases = lapply(step_size$biases, function(x) array(0, dim = dim(x)))
+    )
+    second_moments <- list(
+      weights = lapply(step_size$weights, function(x) array(0, dim = dim(x))),
+      biases = lapply(step_size$biases, function(x) array(0, dim = dim(x)))
+    )
   }
   for (time in seq_len(times)) {
     #we don't really care about costs so i won't
@@ -285,18 +305,18 @@ grad_desc <- function(
       batch <- 1
     }
     if (method == "Total") {
-      batch <- length(inputs)
+      batch <- N
     }
     if (method == "Proportion") {
       batch <- as.integer(
-        proportion * length(inputs)
+        proportion * N
       )
     }
     if (method == "Batch") {
       batch <- batch_size
     }
-    batch_indices <- sample(seq_along(inputs), batch)
-    batch_in <- inputs[batch_indices]
+    batch_indices <- sample(seq_len(N), batch)
+    batch_in <- inputs[, batch_indices, drop = FALSE]
     batch_out <- outputs[, batch_indices, drop = FALSE] # KEEP MATRIX (o x batch)
     grad <- get_grads(trainer, batch_in, batch_out)
     f_grad <- list(
@@ -370,4 +390,4 @@ xs <- seq(0, 1, 0.01)
 ys <- pred_function(xs)
 zs <- pred_function(ys)
 # costs <- grad_desc(model, rep(1, 100), matrix(0, o, 100), times = 100)
-costs <- grad_desc(model, xs, rbind(ys, zs), times = 100)
+costs <- grad_desc(model, rbind(xs, xs), rbind(ys, zs), times = 100)
