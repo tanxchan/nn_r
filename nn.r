@@ -50,6 +50,7 @@ run_net <- function(input, model) {
   n <- model$dim[["n"]]
   m <- model$dim[["m"]]
   o <- model$dim[["o"]]
+  input <- as.matrix(input)
   values <- matrix(nrow = n, ncol = m)
   values[, 1] <- model$weights$input %*% input + model$biases$hidden[, 1]
   for (i in 2:m) {
@@ -144,7 +145,6 @@ run_backprop <- function(args) {
 run_backprop(backprop_args)
 
 #verify backprop:
-#too lazy to do this for the whole thing, u get the idea
 verify_backprop <- function(args) {
   backprop_vals <- run_backprop(args)
   input <- args$input
@@ -391,3 +391,5 @@ ys <- pred_function(xs)
 zs <- pred_function(ys)
 # costs <- grad_desc(model, rep(1, 100), matrix(0, o, 100), times = 100)
 costs <- grad_desc(model, rbind(xs, xs), rbind(ys, zs), times = 100)
+
+plot(costs)
