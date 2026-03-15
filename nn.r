@@ -4,30 +4,35 @@
 #dC/d(act(V_i)) = sum(dC/dV_j*dV_j/dV_i, j) = sum(dC/dV_j*w_ij, j)
 #dC/db_i = dC/dV_i*dV_i/db_i = dC/dV_i
 
-#Constants
-n <- 3 #number of nodes in each column
-m <- 3 #number of cols
-i <- 2 #number of inputs
-o <- 2 #number of outputs
+make_model <- function(n, m, i, o) {
+  # nn_weights should be a random sample
+  nn_seed <- rep(x = 1, times = m * n * n - n * n)
+  nn_weights <- array(nn_seed, dim = c(m - 1, n, n))
 
-# nn_weights should be a random sample
-nn_seed <- rep(x = 1, times = m * n * n - n * n)
-nn_weights <- array(nn_seed, dim = c(m - 1, n, n))
+  #these should also be random samples but wtvr
+  in_weights <- array(1, dim = c(n, i))
+  out_weights <- array(1, dim = c(o, n))
+  out_biases <- array(1, dim = o)
 
-#these should also be random samples but wtvr
-in_weights <- array(1, dim = c(n, i))
-out_weights <- array(1, dim = c(o, n))
-out_biases <- array(1, dim = o)
+  #bias
+  biases <- array(1, dim = c(n, m))
 
-#bias
-biases <- array(1, dim = c(n, m))
+  act <- function(input) {
+    #input is a vector(doesn't rly matter dimension)
+    return(pmax(0, input)) # relu
+  }
+  dact <- function(input) {
+    as.integer(input > 0)
+  }
 
-act <- function(input) {
-  #input is a vector(doesn't rly matter dimension)
-  return(pmax(0, input)) # relu
-}
-dact <- function(input) {
-  as.integer(input > 0)
+  model <- list(
+    dim = c(n = n, m = m, i = i, o = o),
+    weights = list(hidden = nn_weights, input = in_weights, out = out_weights),
+    biases = list(hidden = biases, out = out_biases),
+    act = list(hidden = act, out = act),
+    dact = list(hidden = dact, out = dact)
+  ) #makes it easier to move around
+  model
 }
 loss <- function(input) {
   #loss function, usually mean squared or smth
@@ -37,14 +42,6 @@ loss <- function(input) {
 dloss <- function(input) {
   2 * input
 }
-
-model <- list(
-  dim = c(n = n, m = m, i = i, o = o),
-  weights = list(hidden = nn_weights, input = in_weights, out = out_weights),
-  biases = list(hidden = biases, out = out_biases),
-  act = list(hidden = act, out = act),
-  dact = list(hidden = dact, out = dact)
-) #makes it easier to move around
 
 run_net <- function(input, model) {
   n <- model$dim[["n"]]
@@ -69,18 +66,18 @@ run_net <- function(input, model) {
   list(input = input, output = out, model = model, values = values)
 }
 
-input <- c(3)
-output <- run_net(input, model)
-correct_output <- matrix(1, o, 1)
+# input <- c(3)
+# output <- run_net(input, model)
+# correct_output <- matrix(1, o, 1)
 
-backprop_args <- list(
-  output = output$output,
-  correct_output = correct_output,
-  values = output$values,
-  model = model,
-  dloss = dloss,
-  input = input
-)
+# backprop_args <- list(
+#   output = output$output,
+#   correct_output = correct_output,
+#   values = output$values,
+#   model = model,
+#   dloss = dloss,
+#   input = input
+# )
 
 #dC/dw_ij = dC/dV_j*dV_j/dw_ij = dC/dV_j*act(V_i), where act is the
 #activation function and V is the value of node i(pre activation)
@@ -142,7 +139,7 @@ run_backprop <- function(args) {
     dWeightOut = dW_out
   )
 }
-run_backprop(backprop_args)
+# run_backprop(backprop_args)
 
 #verify backprop:
 verify_backprop <- function(args) {
@@ -165,7 +162,7 @@ verify_backprop <- function(args) {
   }
   err
 }
-verify_backprop(backprop_args)
+# verify_backprop(backprop_args)
 
 #we could generalize by making one massive weight vector
 #and then handle weight calculation internally
@@ -317,7 +314,7 @@ grad_desc <- function(
     }
     batch_indices <- sample(seq_len(N), batch)
     batch_in <- inputs[, batch_indices, drop = FALSE]
-    batch_out <- outputs[, batch_indices, drop = FALSE] # KEEP MATRIX (o x batch)
+    batch_out <- outputs[, batch_indices, drop = FALSE]
     grad <- get_grads(trainer, batch_in, batch_out)
     f_grad <- list(
       weights = list(
@@ -330,8 +327,9 @@ grad_desc <- function(
     # ensure out bias grad is also (o, 1)
     f_grad$biases$out <- array(f_grad$biases$out, dim = dim(trainer$biases$out))
     #descend with gradients
-    if (learning_function == "Adaptive") {
-      #   lr_scale <- lr_scale * sqrt(1 - b2^time) / (1 - b1^time)
+    if (learning_function == "Adaptive" && optimizer != "ADAM") {
+      #adam already optimizes
+      lr_scale <- lr_scale * sqrt(1 - b2^time) / (1 - b1^time)
     }
     for (i in names(step_size$weights)) {
       #allows for custom behaviour if step_size should be different between biases and weights
@@ -377,7 +375,7 @@ grad_desc <- function(
 
     costs <- c(costs, grad$cost)
   }
-  costs
+  return(list(costs = costs, model = trainer))
 }
 # cat(grad_desc(model, c(1, 2), matrix(c(3, 2, 19000, 1), 2, 2)))
 # cat(grad_desc(model, c(1), matrix(1, 2, 1), times = 10))
@@ -390,6 +388,14 @@ xs <- seq(0, 1, 0.01)
 ys <- pred_function(xs)
 zs <- pred_function(ys)
 # costs <- grad_desc(model, rep(1, 100), matrix(0, o, 100), times = 100)
-costs <- grad_desc(model, rbind(xs, xs), rbind(ys, zs), times = 100)
 
-plot(costs)
+#Constants
+n <- 3 #number of nodes in each column
+m <- 3 #number of cols
+i <- 2 #number of inputs
+o <- 2 #number of outputs
+model <- make_model(n, m, i, o)
+out <- grad_desc(model, rbind(xs, xs), rbind(ys, zs), times = 100)
+
+plot(out$costs)
+run_net(c(0.5, 0.5), out$model)
